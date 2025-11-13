@@ -14,5 +14,10 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.65",
+    "@ai-sdk/openai-compatible": "^1.0.27",
+    "ai": "^5.0.93"
   }
 }

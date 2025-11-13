@@ -1,98 +1,31 @@
-import type {
-  ChatCompletionRequest,
-  ChatCompletionResponse,
-} from "./types.js";
+import { generateText, streamObject, streamText} from "ai"
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
-export interface EigenAIClientOptions {
-  apiKey: string;
-  baseUrl?: string;
+const provider = createOpenAICompatible({
+  name: "eigen",
+  apiKey: process.env.EIGEN_API_KEY,
+  baseURL: 'https://eigenai-sepolia.eigencloud.xyz/v1',
+  includeUsage: true, // Include usage information in streaming responses
+});
+
+const stream = streamText({
+  model: provider("gpt-oss-120b-f16"),
+  messages: [
+    { role: 'user', content: `
+    You are a helpful assistant that can answer questions and help with tasks.
+    You are currently in the context of the following conversation:
+      The user is asking you to help them with a task.
+    `},
+  ],
+  maxOutputTokens: 4000,
+  providerOptions: {
+    openai: {
+      max_tokens: 4000,
+      seed: 112212,
+    }
+  }
+});
+
+for await (const chunk of stream.textStream) {
+  process.stdout.write(chunk);
 }
-
-export class EigenAIClient {
-  private apiKey: string;
-  private baseUrl: string;
-
-  constructor(options: EigenAIClientOptions) {
-    this.apiKey = options.apiKey;
-    this.baseUrl = options.baseUrl || "https://eigenai.eigencloud.xyz/v1";
-  }
-
-  async chatCompletions(
-    request: ChatCompletionRequest
-  ): Promise<ChatCompletionResponse> {
-    const url = `${this.baseUrl}/chat/completions`;
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "X-API-Key": this.apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `EigenAI API error: ${response.status} ${response.statusText} - ${errorText}`
-      );
-    }
-
-    return (await response.json()) as ChatCompletionResponse;
-  }
-
-  async *chatCompletionsStream(
-    request: ChatCompletionRequest
-  ): AsyncGenerator<string, void, unknown> {
-    const url = `${this.baseUrl}/chat/completions`;
-    const streamRequest = { ...request, stream: true };
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "X-API-Key": this.apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(streamRequest),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `EigenAI API error: ${response.status} ${response.statusText} - ${errorText}`
-      );
-    }
-
-    if (!response.body) {
-      throw new Error("Response body is null");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6).trim();
-            if (data === "[DONE]") {
-              return;
-            }
-            if (data) {
-              yield data;
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  }
-}
-
